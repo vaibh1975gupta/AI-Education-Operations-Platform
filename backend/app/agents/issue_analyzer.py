@@ -56,6 +56,8 @@ llm = ChatGoogleGenerativeAI(
     temperature=0,
     max_output_tokens=500,
     max_retries=2,
+    response_mime_type="application/json",
+    thinking_budget=0,
 )
 
 
@@ -65,11 +67,11 @@ llm = ChatGoogleGenerativeAI(
 
 def extract_json(text: str) -> dict:
     """
-    Extract JSON safely from Gemini response.
+    Safely extract JSON from Gemini response.
 
     Handles:
     1. Normal JSON
-    2. JSON inside ```json ... ```
+    2. JSON inside markdown code fences
     3. Extra text around JSON
     """
 
@@ -94,26 +96,27 @@ def extract_json(text: str) -> dict:
 
     text = text.strip()
 
-    # Try direct JSON parsing first
+    # Direct JSON parsing
     try:
         return json.loads(text)
+
     except json.JSONDecodeError:
         pass
 
-    # Find JSON object inside the response
-    match = re.search(
-        r"\{.*\}",
-        text,
-        flags=re.DOTALL
-    )
+    # Find first JSON object
+    start = text.find("{")
+    end = text.rfind("}")
 
-    if not match:
+    if start == -1 or end == -1 or end <= start:
         raise ValueError(
             f"Gemini did not return valid JSON: {text}"
         )
 
+    json_text = text[start:end + 1]
+
     try:
-        return json.loads(match.group(0))
+        return json.loads(json_text)
+
     except json.JSONDecodeError as e:
         raise ValueError(
             f"Could not parse Gemini JSON response: {e}"
@@ -137,7 +140,7 @@ TITLE:
 DESCRIPTION:
 {state["description"]}
 
-Your task is to classify the issue.
+Classify the issue using ONLY the information provided.
 
 Allowed categories:
 - attendance
@@ -153,13 +156,7 @@ Allowed priority levels:
 - high
 - critical
 
-Return ONLY valid JSON.
-
-Do not use markdown.
-Do not use ```json.
-Do not add any explanation outside the JSON.
-
-Use exactly this JSON structure:
+Return exactly one JSON object with these four fields:
 
 {{
     "category": "attendance",
@@ -169,16 +166,19 @@ Use exactly this JSON structure:
 }}
 
 Rules:
+
 1. Do not invent facts.
 2. Base the classification only on the title and description.
 3. Use "critical" only for issues requiring immediate attention.
 4. Use "high" for significant issues that should be addressed promptly.
 5. Keep recommended_action practical.
 6. Keep ai_analysis short and clear.
+7. category must be one of the allowed categories.
+8. priority must be one of the allowed priority levels.
 """
 
     # -----------------------------------------------------
-    # Call Gemini directly
+    # Call Gemini
     # -----------------------------------------------------
 
     response = llm.invoke(prompt)
@@ -189,7 +189,6 @@ Rules:
 
     content = response.content
 
-    # Newer LangChain versions may return content blocks
     if isinstance(content, list):
 
         text_parts = []
@@ -197,17 +196,18 @@ Rules:
         for block in content:
 
             if isinstance(block, dict):
+
                 text = block.get("text")
 
                 if text:
                     text_parts.append(text)
 
             elif isinstance(block, str):
+
                 text_parts.append(block)
 
         content = "".join(text_parts)
 
-    # Make sure content is a string
     content = str(content)
 
     # -----------------------------------------------------
@@ -223,6 +223,39 @@ Rules:
     analysis = IssueAnalysis.model_validate(
         analysis_data
     )
+
+    # -----------------------------------------------------
+    # Normalize values
+    # -----------------------------------------------------
+
+    analysis.category = analysis.category.lower().strip()
+    analysis.priority = analysis.priority.lower().strip()
+
+    # -----------------------------------------------------
+    # Validate allowed values
+    # -----------------------------------------------------
+
+    allowed_categories = {
+        "attendance",
+        "academic",
+        "behavioral",
+        "technical",
+        "administrative",
+        "other",
+    }
+
+    allowed_priorities = {
+        "low",
+        "medium",
+        "high",
+        "critical",
+    }
+
+    if analysis.category not in allowed_categories:
+        analysis.category = "other"
+
+    if analysis.priority not in allowed_priorities:
+        analysis.priority = "medium"
 
     # -----------------------------------------------------
     # Return LangGraph state update
