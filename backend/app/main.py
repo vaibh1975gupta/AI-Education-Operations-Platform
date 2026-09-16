@@ -7,7 +7,7 @@ from app.routes.students import router as students_router
 from app.routes.issues import router as issues_router
 from app.routes.tasks import router as tasks_router
 from app.agents.issue_analyzer import analyze_student_issue
-
+from app.routes.notifications import router as notifications_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -30,7 +30,7 @@ app.include_router(schools_router)
 app.include_router(students_router)
 app.include_router(issues_router)
 app.include_router(tasks_router)
-
+app.include_router(notifications_router)
 # Root endpoint
 @app.get("/")
 def root():
