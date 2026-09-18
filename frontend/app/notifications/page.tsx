@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 type Notification = {
   id: string;
-  user_id?: string;
-  issue_id?: string;
+  user_id?: string | null;
+  issue_id?: string | null;
   message: string;
-  type?: string;
-  is_read?: boolean;
-  created_at?: string;
+  type?: string | null;
+  is_read?: boolean | null;
+  created_at?: string | null;
 };
 
 const API_URL =
@@ -20,6 +21,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("latest");
@@ -38,14 +40,16 @@ export default function NotificationsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch notifications");
+        throw new Error(
+          `Failed to fetch notifications: ${response.status}`
+        );
       }
 
       const result = await response.json();
 
       setNotifications(result.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Notification fetch error:", err);
       setError("Unable to load notifications");
     } finally {
       setLoading(false);
@@ -60,9 +64,43 @@ export default function NotificationsPage() {
     (notification) => notification.is_read
   ).length;
 
+  const notificationTypes = useMemo(() => {
+    return Array.from(
+      new Set(
+        notifications
+          .map((notification) =>
+            notification.type?.toLowerCase()
+          )
+          .filter(
+            (type): type is string => Boolean(type)
+          )
+      )
+    );
+  }, [notifications]);
+
   const filteredNotifications = useMemo(() => {
     let result = [...notifications];
 
+    // Search
+    if (search.trim()) {
+      const query = search.toLowerCase().trim();
+
+      result = result.filter((notification) => {
+        return (
+          notification.message
+            ?.toLowerCase()
+            .includes(query) ||
+          notification.type
+            ?.toLowerCase()
+            .includes(query) ||
+          notification.issue_id
+            ?.toLowerCase()
+            .includes(query)
+        );
+      });
+    }
+
+    // Type filter
     if (typeFilter !== "all") {
       result = result.filter(
         (notification) =>
@@ -71,6 +109,7 @@ export default function NotificationsPage() {
       );
     }
 
+    // Status filter
     if (statusFilter === "unread") {
       result = result.filter(
         (notification) => !notification.is_read
@@ -79,10 +118,11 @@ export default function NotificationsPage() {
 
     if (statusFilter === "read") {
       result = result.filter(
-        (notification) => notification.is_read
+        (notification) => Boolean(notification.is_read)
       );
     }
 
+    // Sorting
     result.sort((a, b) => {
       const dateA = new Date(
         a.created_at || 0
@@ -100,24 +140,13 @@ export default function NotificationsPage() {
     return result;
   }, [
     notifications,
+    search,
     typeFilter,
     statusFilter,
     sortOrder,
   ]);
 
-  const notificationTypes = useMemo(() => {
-    return Array.from(
-      new Set(
-        notifications
-          .map((notification) =>
-            notification.type?.toLowerCase()
-          )
-          .filter(Boolean)
-      )
-    );
-  }, [notifications]);
-
-  function getTypeStyle(type?: string) {
+  function getTypeStyle(type?: string | null) {
     switch (type?.toLowerCase()) {
       case "warning":
         return "bg-amber-50 text-amber-700 border-amber-100";
@@ -136,23 +165,29 @@ export default function NotificationsPage() {
     }
   }
 
-  function getTypeIcon(type?: string) {
+  function getTypeIcon(type?: string | null) {
     switch (type?.toLowerCase()) {
       case "warning":
         return "!";
+
       case "success":
         return "✓";
+
       case "error":
         return "×";
+
       case "ai":
         return "✦";
+
       default:
         return "🔔";
     }
   }
 
-  function formatDate(date?: string) {
-    if (!date) return "—";
+  function formatDate(date?: string | null) {
+    if (!date) {
+      return "—";
+    }
 
     const parsed = new Date(date);
 
@@ -170,6 +205,7 @@ export default function NotificationsPage() {
   }
 
   function clearFilters() {
+    setSearch("");
     setTypeFilter("all");
     setStatusFilter("all");
     setSortOrder("latest");
@@ -177,522 +213,461 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-
-      {/* ================= HEADER ================= */}
-
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
-        <div className="flex items-center justify-between">
-
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-500">
-              Operations
-            </p>
-
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
-              Notifications
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Monitor alerts, updates, and automated operations activity.
-            </p>
-          </div>
-
-          <div className="hidden items-center gap-3 md:flex">
-
-            <div className="flex h-11 w-72 items-center rounded-xl bg-slate-100 px-4">
-              <span className="mr-3 text-slate-400">
-                🔍
-              </span>
-
-              <span className="text-sm text-slate-400">
-                Search notifications...
-              </span>
-            </div>
-
-            <button className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white">
-              🔔
-
-              {unreadCount > 0 && (
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-              )}
-            </button>
-
-            <div className="flex items-center gap-3">
-
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 font-bold text-white">
-                VG
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold">
-                  Admin
-                </p>
-
-                <p className="text-xs text-slate-400">
-                  Operations
-                </p>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </header>
-
-
-      {/* ================= MAIN ================= */}
-
-      <main className="p-8">
-
-        {/* Page intro */}
-
-        <div className="mb-7 flex items-end justify-between">
-
-          <div>
-            <p className="text-sm text-slate-500">
-              Education Operations
-            </p>
-
-            <h2 className="mt-1 text-4xl font-bold tracking-tight">
-              Notification Center
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              Stay informed about student issues, tasks, and AI-powered activities.
-            </p>
-          </div>
-
-          <button
-            onClick={fetchNotifications}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            ↻ Refresh
-          </button>
-
-        </div>
-
-
-        {/* ================= STATS ================= */}
-
-        <div className="mb-6 grid gap-5 md:grid-cols-3">
-
-          {/* Total */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-            <div className="flex items-start justify-between">
-
-              <div>
-                <p className="text-sm text-slate-500">
-                  Total Notifications
-                </p>
-
-                <p className="mt-2 text-4xl font-bold">
-                  {notifications.length}
-                </p>
-
-                <p className="mt-2 text-xs text-slate-400">
-                  All system notifications
-                </p>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-xl text-cyan-600">
-                🔔
-              </div>
-
-            </div>
-
-            <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-emerald-600">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Live
-            </div>
-
-          </div>
-
-
-          {/* Unread */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-            <div className="flex items-start justify-between">
-
-              <div>
-                <p className="text-sm text-slate-500">
-                  Unread
-                </p>
-
-                <p className="mt-2 text-4xl font-bold">
-                  {unreadCount}
-                </p>
-
-                <p className="mt-2 text-xs text-slate-400">
-                  Require your attention
-                </p>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-xl font-bold text-amber-600">
-                !
-              </div>
-
-            </div>
-
-            <div className="mt-5 text-xs font-semibold text-amber-600">
-              {unreadCount > 0
-                ? "Action required"
-                : "All caught up"}
-            </div>
-
-          </div>
-
-
-          {/* Read */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-            <div className="flex items-start justify-between">
-
-              <div>
-                <p className="text-sm text-slate-500">
-                  Read
-                </p>
-
-                <p className="mt-2 text-4xl font-bold">
-                  {readCount}
-                </p>
-
-                <p className="mt-2 text-xs text-slate-400">
-                  Already viewed
-                </p>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-600">
-                ✓
-              </div>
-
-            </div>
-
-            <div className="mt-5 text-xs font-semibold text-emerald-600">
-              Up to date
-            </div>
-
-          </div>
-
-        </div>
-
-
-        {/* ================= FILTERS ================= */}
-
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-          <div className="mb-4 flex items-center justify-between">
-
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Main content */}
+      <div className="ml-[270px] min-h-screen">
+        {/* ================= HEADER ================= */}
+        <header className="border-b border-slate-200 bg-white px-8 py-5">
+          <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold">
-                Notification Filters
-              </h3>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-500">
+                Operations
+              </p>
+
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+                Notifications
+              </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Filter notifications by type or status.
+                Monitor alerts, updates, and automated operations activity.
+              </p>
+            </div>
+
+            <div className="hidden items-center gap-3 md:flex">
+              {/* Search */}
+              <div className="flex h-11 w-72 items-center rounded-xl bg-slate-100 px-4">
+                <span className="mr-3 text-slate-400">
+                  🔍
+                </span>
+
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search notifications..."
+                  className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                />
+              </div>
+
+              {/* Notification button */}
+              <button
+                type="button"
+                onClick={fetchNotifications}
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white transition hover:bg-slate-50"
+              >
+                🔔
+
+                {unreadCount > 0 && (
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </button>
+
+              {/* Admin */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 font-bold text-white">
+                  VG
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold">
+                    Admin
+                  </p>
+
+                  <p className="text-xs text-slate-400">
+                    Operations
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* ================= MAIN ================= */}
+        <main className="p-8">
+          {/* Page intro */}
+          <div className="mb-7 flex items-end justify-between">
+            <div>
+              <p className="text-sm text-slate-500">
+                Education Operations
+              </p>
+
+              <h2 className="mt-1 text-4xl font-bold tracking-tight">
+                Notification Center
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Stay informed about student issues, tasks, and AI-powered activities.
               </p>
             </div>
 
             <button
-              onClick={clearFilters}
-              className="text-sm font-semibold text-cyan-600 hover:text-cyan-700"
+              type="button"
+              onClick={fetchNotifications}
+              disabled={loading}
+              className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Clear Filters
+              {loading ? "Loading..." : "↻ Refresh"}
             </button>
-
           </div>
 
+          {/* ================= STATS ================= */}
+          <div className="mb-6 grid gap-5 md:grid-cols-3">
+            {/* Total */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">
+                    Total Notifications
+                  </p>
 
-          <div className="grid gap-4 md:grid-cols-3">
+                  <p className="mt-2 text-4xl font-bold">
+                    {notifications.length}
+                  </p>
 
-            <select
-              value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value)
-              }
-              className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
-            >
-              <option value="all">
-                All Types
-              </option>
-
-              {notificationTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type.charAt(0).toUpperCase() +
-                    type.slice(1)}
-                </option>
-              ))}
-            </select>
-
-
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value)
-              }
-              className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
-            >
-              <option value="all">
-                All Statuses
-              </option>
-
-              <option value="unread">
-                Unread
-              </option>
-
-              <option value="read">
-                Read
-              </option>
-            </select>
-
-
-            <select
-              value={sortOrder}
-              onChange={(e) =>
-                setSortOrder(e.target.value)
-              }
-              className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
-            >
-              <option value="latest">
-                Latest First
-              </option>
-
-              <option value="oldest">
-                Oldest First
-              </option>
-            </select>
-
-          </div>
-
-        </div>
-
-
-        {/* ================= NOTIFICATION CENTER ================= */}
-
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-
-            <div>
-              <h3 className="text-lg font-semibold">
-                Notification Activity
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Live notification data from FastAPI + Supabase.
-              </p>
-            </div>
-
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-              {filteredNotifications.length} notifications
-            </span>
-
-          </div>
-
-
-          {/* Loading */}
-
-          {loading && (
-            <div className="px-6 py-24 text-center">
-
-              <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-cyan-500" />
-
-              <p className="mt-4 text-sm text-slate-500">
-                Loading notifications...
-              </p>
-
-            </div>
-          )}
-
-
-          {/* Error */}
-
-          {!loading && error && (
-            <div className="px-6 py-24 text-center">
-
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-xl font-bold text-red-500">
-                !
-              </div>
-
-              <h3 className="mt-4 font-semibold">
-                Unable to load notifications
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500">
-                The notification service could not be reached.
-              </p>
-
-              <button
-                onClick={fetchNotifications}
-                className="mt-5 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Try Again
-              </button>
-
-            </div>
-          )}
-
-
-          {/* Empty */}
-
-          {!loading &&
-            !error &&
-            filteredNotifications.length === 0 && (
-              <div className="px-6 py-24 text-center">
-
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-cyan-50 text-2xl">
-                  🔔
+                  <p className="mt-2 text-xs text-slate-400">
+                    All system notifications
+                  </p>
                 </div>
 
-                <h3 className="mt-5 text-lg font-semibold">
-                  No notifications found
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-50 text-xl text-cyan-600">
+                  🔔
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Live
+              </div>
+            </div>
+
+            {/* Unread */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">
+                    Unread
+                  </p>
+
+                  <p className="mt-2 text-4xl font-bold">
+                    {unreadCount}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-400">
+                    Require your attention
+                  </p>
+                </div>
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-xl font-bold text-amber-600">
+                  !
+                </div>
+              </div>
+
+              <div className="mt-5 text-xs font-semibold text-amber-600">
+                {unreadCount > 0
+                  ? "Action required"
+                  : "All caught up"}
+              </div>
+            </div>
+
+            {/* Read */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">
+                    Read
+                  </p>
+
+                  <p className="mt-2 text-4xl font-bold">
+                    {readCount}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-400">
+                    Already viewed
+                  </p>
+                </div>
+
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-600">
+                  ✓
+                </div>
+              </div>
+
+              <div className="mt-5 text-xs font-semibold text-emerald-600">
+                Up to date
+              </div>
+            </div>
+          </div>
+
+          {/* ================= FILTERS ================= */}
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  Notification Filters
                 </h3>
 
-                <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-                  {notifications.length === 0
-                    ? "Notifications will appear here when new updates, alerts, or AI-generated activities are created."
-                    : "No notifications match the selected filters."}
+                <p className="mt-1 text-sm text-slate-500">
+                  Filter notifications by type or status.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-sm font-semibold text-cyan-600 hover:text-cyan-700"
+              >
+                Clear Filters
+              </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Type */}
+              <select
+                value={typeFilter}
+                onChange={(e) =>
+                  setTypeFilter(e.target.value)
+                }
+                className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
+              >
+                <option value="all">
+                  All Types
+                </option>
+
+                {notificationTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type.charAt(0).toUpperCase() +
+                      type.slice(1)}
+                  </option>
+                ))}
+              </select>
+
+              {/* Status */}
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value)
+                }
+                className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
+              >
+                <option value="all">
+                  All Statuses
+                </option>
+
+                <option value="unread">
+                  Unread
+                </option>
+
+                <option value="read">
+                  Read
+                </option>
+              </select>
+
+              {/* Sort */}
+              <select
+                value={sortOrder}
+                onChange={(e) =>
+                  setSortOrder(e.target.value)
+                }
+                className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-cyan-400"
+              >
+                <option value="latest">
+                  Latest First
+                </option>
+
+                <option value="oldest">
+                  Oldest First
+                </option>
+              </select>
+            </div>
+          </div>
+
+          {/* ================= NOTIFICATION ACTIVITY ================= */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  Notification Activity
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Live notification data from FastAPI + Supabase.
+                </p>
+              </div>
+
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                {filteredNotifications.length} notifications
+              </span>
+            </div>
+
+            {/* Loading */}
+            {loading && (
+              <div className="px-6 py-24 text-center">
+                <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-cyan-500" />
+
+                <p className="mt-4 text-sm text-slate-500">
+                  Loading notifications...
+                </p>
+              </div>
+            )}
+
+            {/* Error */}
+            {!loading && error && (
+              <div className="px-6 py-24 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-xl font-bold text-red-500">
+                  !
+                </div>
+
+                <h3 className="mt-4 font-semibold">
+                  Unable to load notifications
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  The notification service could not be reached.
                 </p>
 
                 <button
-                  onClick={
-                    notifications.length === 0
-                      ? fetchNotifications
-                      : clearFilters
-                  }
-                  className="mt-6 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                  type="button"
+                  onClick={fetchNotifications}
+                  className="mt-5 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  {notifications.length === 0
-                    ? "↻ Refresh"
-                    : "Clear Filters"}
+                  Try Again
                 </button>
-
               </div>
             )}
 
+            {/* Empty */}
+            {!loading &&
+              !error &&
+              filteredNotifications.length === 0 && (
+                <div className="px-6 py-24 text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-cyan-50 text-2xl">
+                    🔔
+                  </div>
 
-          {/* Notifications */}
+                  <h3 className="mt-5 text-lg font-semibold">
+                    No notifications found
+                  </h3>
 
-          {!loading &&
-            !error &&
-            filteredNotifications.length > 0 && (
+                  <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+                    {notifications.length === 0
+                      ? "Notifications will appear here when new updates, alerts, or AI-generated activities are created."
+                      : "No notifications match the selected filters."}
+                  </p>
 
-              <div className="divide-y divide-slate-100">
+                  <button
+                    type="button"
+                    onClick={
+                      notifications.length === 0
+                        ? fetchNotifications
+                        : clearFilters
+                    }
+                    className="mt-6 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    {notifications.length === 0
+                      ? "↻ Refresh"
+                      : "Clear Filters"}
+                  </button>
+                </div>
+              )}
 
-                {filteredNotifications.map(
-                  (notification) => (
-
-                    <div
-                      key={notification.id}
-                      className={`px-6 py-5 transition hover:bg-slate-50 ${
-                        !notification.is_read
-                          ? "bg-cyan-50/20"
-                          : ""
-                      }`}
-                    >
-
-                      <div className="flex gap-4">
-
-                        {/* Icon */}
-
-                        <div
-                          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-lg font-bold ${getTypeStyle(
-                            notification.type
-                          )}`}
-                        >
-                          {getTypeIcon(
-                            notification.type
-                          )}
-                        </div>
-
-
-                        {/* Content */}
-
-                        <div className="min-w-0 flex-1">
-
-                          <div className="flex flex-wrap items-center gap-2">
-
-                            <span
-                              className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${getTypeStyle(
-                                notification.type
-                              )}`}
-                            >
-                              {notification.type ||
-                                "info"}
-                            </span>
-
-                            {!notification.is_read && (
-                              <span className="flex items-center gap-1.5 text-xs font-semibold text-cyan-600">
-                                <span className="h-2 w-2 rounded-full bg-cyan-500" />
-                                Unread
-                              </span>
+            {/* Notifications */}
+            {!loading &&
+              !error &&
+              filteredNotifications.length > 0 && (
+                <div className="divide-y divide-slate-100">
+                  {filteredNotifications.map(
+                    (notification) => (
+                      <div
+                        key={notification.id}
+                        className={`px-6 py-5 transition hover:bg-slate-50 ${
+                          !notification.is_read
+                            ? "bg-cyan-50/20"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex gap-4">
+                          {/* Icon */}
+                          <div
+                            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-lg font-bold ${getTypeStyle(
+                              notification.type
+                            )}`}
+                          >
+                            {getTypeIcon(
+                              notification.type
                             )}
-
                           </div>
 
+                          {/* Content */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${getTypeStyle(
+                                  notification.type
+                                )}`}
+                              >
+                                {notification.type || "info"}
+                              </span>
 
-                          <p className="mt-3 text-sm font-medium leading-6 text-slate-800">
-                            {notification.message}
-                          </p>
-
-
-                          <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
-
-                            <span>
-                              {formatDate(
-                                notification.created_at
+                              {!notification.is_read && (
+                                <span className="flex items-center gap-1.5 text-xs font-semibold text-cyan-600">
+                                  <span className="h-2 w-2 rounded-full bg-cyan-500" />
+                                  Unread
+                                </span>
                               )}
-                            </span>
 
-                            {notification.issue_id && (
-                              <span className="font-mono">
-                                Issue:{" "}
-                                {notification.issue_id.slice(
-                                  0,
-                                  8
+                              {notification.is_read && (
+                                <span className="text-xs font-semibold text-emerald-600">
+                                  Read
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="mt-3 text-sm font-medium leading-6 text-slate-800">
+                              {notification.message}
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
+                              <span>
+                                {formatDate(
+                                  notification.created_at
                                 )}
-                                ...
                               </span>
-                            )}
 
+                              {notification.issue_id && (
+                                <span className="font-mono">
+                                  Issue:{" "}
+                                  {notification.issue_id.slice(
+                                    0,
+                                    8
+                                  )}
+                                  ...
+                                </span>
+                              )}
+                            </div>
                           </div>
-
                         </div>
-
                       </div>
-
-                    </div>
-
-                  )
-                )}
-
-              </div>
-            )}
-
-        </div>
-
-
-        {/* ================= BACKEND STATUS ================= */}
-
-        <div className="mt-5 flex items-center justify-between">
-
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-
-            Connected to FastAPI backend
-
+                    )
+                  )}
+                </div>
+              )}
           </div>
 
-          <div className="hidden text-xs text-slate-400 md:block">
-            EduOps AI • Education Operations Platform
+          {/* ================= BACKEND STATUS ================= */}
+          <div className="mt-5 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Connected to FastAPI backend
+            </div>
+
+            <div className="hidden text-xs text-slate-400 md:block">
+              EduOps AI • Education Operations Platform
+            </div>
           </div>
-
-        </div>
-
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
